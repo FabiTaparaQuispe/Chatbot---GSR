@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat ventas avícolas</title>
+  <link rel="stylesheet" href="/public/styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header class="head">
+      <h1>Ventas — asistente</h1>
+      <p class="sub">Consultas agregadas sobre <code>ventasgeneral</code> y <code>sale</code> (Groq o LLM local).</p>
+    </header>
+    <div id="log" class="log" aria-live="polite"></div>
+    <form id="form" class="form">
+      <label class="sr-only" for="msg">Mensaje</label>
+      <textarea id="msg" rows="2" placeholder="Ej: Top 10 clientes por ventas en enero 2026 usando ventasgeneral" required></textarea>
+      <button type="submit" id="send">Enviar</button>
+    </form>
+  </main>
+  <script src="/public/app.js" type="module"></script>
+</body>
+</html>

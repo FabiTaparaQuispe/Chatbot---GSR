@@ -1,0 +1,122 @@
+<?php
+
+declare(strict_types=1);
+
+header('Content-Type: application/json; charset=utf-8');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'Método no permitido'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$appRoot = dirname(__DIR__, 2);
+require_once $appRoot . '/config/bootstrap.php';
+require_once $appRoot . '/src/tools_definitions.php';
+require_once $appRoot . '/src/GroqClient.php';
+require_once $appRoot . '/src/ToolExecutor.php';
+require_once $appRoot . '/src/ChatReplyEnricher.php';
+
+$raw = file_get_contents('php://input') ?: '';
+$input = json_decode($raw, true);
+if (!is_array($input)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'JSON inválido'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$messagesIn = $input['messages'] ?? null;
+if (!is_array($messagesIn)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Falta messages (array)'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$apiKey = getenv('GROQ_API_KEY') ?: '';
+if ($apiKey === '') {
+    http_response_code(503);
+    echo json_encode(['error' => 'Configure GROQ_API_KEY en .env'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$model = getenv('GROQ_MODEL') ?: 'llama-3.1-8b-instant';
+
+$system = [
+    'role' => 'system',
+    'content' => 'Asistente ventasgeneral (MySQL cia2026). Solo tabla ventasgeneral; no uses sale. Fechas YYYY-MM-DD; "marzo 2026" → 2026-03-01..2026-03-31. '
+        . 'Ciudad/mercado: sin campo ciudad; usa prefijo_descri_zona_precio (AQP, MOQUEGUA, TACNA, LAJOYA, etc.) sobre DescriZonaPrecio. TDoc NC = 07. '
+        . 'INTEGRIDAD: no inventes nombres ni cifras; rankings solo desde JSON de herramientas (filas). Si no hay herramienta o datos, dilo y llama una o pide fechas. '
+        . 'Si hay filas de ranking/top, escribe primero la lista numerada (1. nombre: N notas, valor X) y al final UNA línea con reporte_url; no respondas solo con el gráfico ni repitas el mismo párrafo. '
+        . 'Mapeo breve: más NC por cliente → ventasgeneral_top_clientes_nota_credito; URL gráfico ventas_top_clientes_nc.php?desde=&hasta=&top= (no inventes ventasgeneral_top_clientes_nc). pareto NC por zona → ventasgeneral_pareto_nc_zonaprecio (pareto_nc_zona.php, no por cliente); top compra global → ventasgeneral_top_clientes_globales; top por zona precio → ventasgeneral_top_clientes_zona_precio; barras dim → ventasgeneral_barras_ventas_dimension; comparativo 2 periodos → ventasgeneral_comparativo_periodos; productos → ventasgeneral_top_productos; mix TDoc → ventasgeneral_mix_tdoc; ruta/corp → ventasgeneral_barras_ruta_comercial / ventasgeneral_barras_corporativo; serie mensual → ventasgeneral_serie_mensual_valor; líneas sueltas → ventasgeneral_buscar; totales → ventasgeneral_resumen. '
+        . 'Un reporte_url por respuesta, copiado tal cual en UNA sola línea (no partas fechas YYYY-MM-DD ni la URL; sin backticks). Resumen/buscar: *_tabla.php. Opcional #grafico. Español, breve.',
+];
+
+$sanitized = [];
+foreach ($messagesIn as $m) {
+    if (!is_array($m)) {
+        continue;
+    }
+    $role = $m['role'] ?? '';
+    if (!in_array($role, ['user', 'assistant'], true)) {
+        continue;
+    }
+    $content = $m['content'] ?? '';
+    if (!is_string($content)) {
+        continue;
+    }
+    if (strlen($content) > 4000) {
+        $content = substr($content, 0, 4000);
+    }
+    $sanitized[] = ['role' => $role, 'content' => $content];
+}
+
+if ($sanitized === []) {
+    http_response_code(400);
+    echo json_encode(['error' => 'No hay mensajes válidos'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// Menos historial = menos tokens (413 TPM en planes con límite bajo, ej. 6000).
+$maxHistory = 4;
+if (count($sanitized) > $maxHistory) {
+    $sanitized = array_slice($sanitized, -$maxHistory);
+}
+
+$messages = array_merge([$system], $sanitized);
+
+// Límite de tiempo total: varias vueltas Groq + SQL; evita “pendiente” infinito en el navegador.
+@set_time_limit(300);
+
+$unificarEnlacesPareto = static function (string $reply): string {
+    if ($reply === '' || !preg_match('/pareto_(?:clientes|nc)_zona\.php\?/i', $reply)) {
+        return $reply;
+    }
+    // Quitar segunda URL obsoleta *_tabla.php (misma vista en pestañas dentro de *_zona.php).
+    $reply = preg_replace('/\s*(?:Y la tabla[^\n]*\n)?\s*pareto_(?:clientes|nc)_zona_tabla\.php\?[^\s<>"\']+/iu', '', $reply);
+    $reply = preg_replace('/\n{3,}/', "\n\n", $reply);
+    return trim($reply);
+};
+
+try {
+    $pdo = ventas_pdo();
+    $executor = new ToolExecutor($pdo);
+    $groq = new GroqClient($apiKey, $model);
+    $tools = ventas_tool_definitions();
+
+    $result = $groq->chatWithTools($messages, $tools, static function (string $name, array $args) use ($executor): string {
+        return $executor->execute($name, $args);
+    });
+
+    $reply = ChatReplyEnricher::enrichReply((string) ($result['reply'] ?? ''), $result['messages'] ?? []);
+
+    echo json_encode([
+        'reply' => $unificarEnlacesPareto($reply),
+        'ok' => true,
+    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode([
+        'ok' => false,
+        'error' => $e->getMessage(),
+    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+}
