@@ -38,7 +38,14 @@ form.addEventListener("submit", async (e) => {
         data.error ||
         data.detail?.error?.message ||
         JSON.stringify(data.detail || data);
-      appendBubble("assistant", `Error: ${err}`, true);
+      const normalized = String(err).toLowerCase();
+      const friendly =
+        normalized.includes('token') ||
+        normalized.includes('rate limit') ||
+        normalized.includes('intente luego')
+          ? 'Hubo un problema de servicio o tokens. Intenta nuevamente en unos minutos.'
+          : err;
+      appendBubble("assistant", `Error: ${friendly}`, true);
       history.pop();
       return;
     }

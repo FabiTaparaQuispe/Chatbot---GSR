@@ -38,10 +38,22 @@ SYS;
         for ($i = 0; $i < $this->maxIterations; $i++) {
             $resp = $this->llm->chat($messages, $toolDefs);
             if (isset($resp['_error'])) {
+                $error = (string) $resp['_error'];
+                $detail = $resp['_body'] ?? $resp['_raw'] ?? null;
+                $normalized = strtolower($error . ' ' . (is_string($detail) ? $detail : json_encode($detail, JSON_UNESCAPED_UNICODE)));
+                if (
+                    str_contains($normalized, 'token') ||
+                    str_contains($normalized, 'rate limit') ||
+                    str_contains($normalized, '429') ||
+                    str_contains($normalized, 'quota') ||
+                    str_contains($normalized, 'too many')
+                ) {
+                    $error = 'Límite de tokens o rate limit. Intente luego de unos minutos.';
+                }
                 return [
                     'ok' => false,
-                    'error' => (string) $resp['_error'],
-                    'detail' => $resp['_body'] ?? $resp['_raw'] ?? null,
+                    'error' => $error,
+                    'detail' => $detail,
                 ];
             }
             $choice = $resp['choices'][0] ?? null;
