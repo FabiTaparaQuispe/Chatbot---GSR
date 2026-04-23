@@ -41,9 +41,16 @@ if ($apiKey === '') {
 
 $model = getenv('GROQ_MODEL') ?: 'llama-3.1-8b-instant';
 
+$dbLabel = 'cia2026';
+$dsnEnv = getenv('DB_DSN') ?: '';
+if (preg_match('/dbname=([^;]+)/i', $dsnEnv, $m) && $m[1] !== '') {
+    $dbLabel = $m[1];
+}
+
 $system = [
     'role' => 'system',
-    'content' => 'Asistente ventasgeneral (MySQL cia2026). Solo tabla ventasgeneral; no uses sale. Fechas YYYY-MM-DD; "marzo 2026" → 2026-03-01..2026-03-31. '
+    'content' => 'Asistente ventasgeneral (MySQL ' . $dbLabel . '). Solo tabla ventasgeneral; no uses sale. Fechas YYYY-MM-DD; "marzo 2026" → 2026-03-01..2026-03-31. '
+        . 'FECHAS OBLIGATORIAS: si el usuario no da rango claro (dos fechas YYYY-MM-DD o mes+año explícito), pregúntale primero por fecha_desde y fecha_hasta antes de llamar herramientas que las requieran; no asumas un mes por defecto salvo que el usuario lo confirme. '
         . 'Ciudad/mercado: sin campo ciudad; usa prefijo_descri_zona_precio (AQP, MOQUEGUA, TACNA, LAJOYA, etc.) sobre DescriZonaPrecio. TDoc NC = 07. '
         . 'INTEGRIDAD: no inventes nombres ni cifras; rankings solo desde JSON de herramientas (filas). Si no hay herramienta o datos, dilo y llama una o pide fechas. '
         . 'Para preguntas de "compraron más", "clientes compradores", "ventas", "facturado", "valor vendido" o similar, usa ventasgeneral_top_clientes_globales o ventasgeneral_top_productos/ventasgeneral_resumen según convenga. '

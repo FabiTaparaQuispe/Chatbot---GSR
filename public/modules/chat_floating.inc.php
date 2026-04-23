@@ -161,6 +161,46 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
     .chat-panel-foot button#ventasChatSend:hover { background: var(--ventas-chat-accent-dim); }
     .chat-panel-foot button#ventasChatSend:disabled { opacity: 0.5; cursor: not-allowed; }
 
+    .ventas-chat-shortcuts {
+        margin: 0 0.75rem;
+        font-size: 0.72rem;
+        color: var(--ventas-chat-muted);
+        max-height: 7.5rem;
+        overflow-y: auto;
+    }
+    .ventas-chat-shortcuts summary {
+        cursor: pointer;
+        color: #93c5fd;
+        font-weight: 600;
+    }
+    .ventas-chat-shortcuts ul { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+    .ventas-chat-chips-wrap {
+        padding: 0.45rem 0.75rem 0.35rem;
+        border-top: 1px solid var(--ventas-chat-border);
+        background: #141c28;
+        flex-shrink: 0;
+    }
+    .ventas-chat-chips-label {
+        display: block;
+        font-size: 0.62rem;
+        color: var(--ventas-chat-muted);
+        margin-bottom: 0.35rem;
+        line-height: 1.35;
+    }
+    .ventas-chat-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .ventas-chat-chip {
+        border: 1px solid var(--ventas-chat-accent);
+        color: #93c5fd;
+        background: transparent;
+        border-radius: 999px;
+        padding: 0.28rem 0.55rem;
+        font-size: 0.68rem;
+        cursor: pointer;
+        font: inherit;
+        line-height: 1.2;
+    }
+    .ventas-chat-chip:hover { background: rgba(59, 130, 246, 0.15); }
+
     .chat-panel .ventas-chat-err {
         color: #f87171;
         font-size: 0.8rem;
@@ -185,6 +225,18 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
         </div>
     </div>
     <div id="ventasChatLog" aria-live="polite"></div>
+    <details class="ventas-chat-shortcuts">
+        <summary>Atajos y palabras clave</summary>
+        <ul>
+            <li><strong>Fechas</strong>: dos fechas en formato YYYY-MM-DD o un mes claro; si faltan, el asistente debe pedirlas antes de consultar.</li>
+            <li><strong>Zona / mercado</strong>: prefijos (AQP, TACNA, MOQUEGUA…) sobre DescriZonaPrecio; no hay campo ciudad.</li>
+            <li><strong>NC</strong> o <strong>TDoc 07</strong>: nota de crédito (rankings NC solo si lo pedís).</li>
+        </ul>
+    </details>
+    <div class="ventas-chat-chips-wrap">
+        <span class="ventas-chat-chips-label">Preguntas frecuentes — mes calendario anterior completo. Tocá un chip, revisá o editá fechas en el cuadro y pulsá Enviar.</span>
+        <div id="ventasChatChips" class="ventas-chat-chips" aria-label="Preguntas frecuentes"></div>
+    </div>
     <div class="chat-panel-foot">
         <div class="row">
             <textarea id="ventasChatInput" placeholder="Ej.: ¿Cuánto sumó Valor en marzo de 2026?" rows="2"></textarea>
@@ -211,7 +263,55 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
     const panel = document.getElementById('ventasChatPanel');
     const closeBtn = document.getElementById('ventasChatClose');
     const clearBtn = document.getElementById('ventasChatClear');
+    const chipsMount = document.getElementById('ventasChatChips');
     const history = [];
+
+    function pad2(n) {
+        return String(n).padStart(2, '0');
+    }
+    function toYmd(d) {
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    }
+    function defaultReportRange() {
+        const now = new Date();
+        const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const last = new Date(now.getFullYear(), now.getMonth(), 0);
+        return { desde: toYmd(first), hasta: toYmd(last) };
+    }
+    function faqChipTemplates(desde, hasta) {
+        const y = new Date().getFullYear();
+        const b1 = toYmd(new Date(y, 0, 1));
+        const b2 = toYmd(new Date(y, 1, 0));
+        const c1 = toYmd(new Date(y, 1, 1));
+        const c2 = toYmd(new Date(y, 2, 0));
+        return [
+            { label: 'Totales del período', text: 'Del ' + desde + ' al ' + hasta + ': totales en ventasgeneral (filas y sumas Valor, Cantidad, Peso). Usá ventasgeneral_resumen y una línea reporte_url ventasgeneral_resumen_tabla.php con los mismos parámetros.' },
+            { label: 'Top clientes (valor)', text: 'Del ' + desde + ' al ' + hasta + ': top 10 clientes globales por suma Valor. Usá ventasgeneral_top_clientes_globales y reporte_url ventas_top_clientes_global.php.' },
+            { label: 'Top productos', text: 'Del ' + desde + ' al ' + hasta + ': top 15 productos por suma Valor. Usá ventasgeneral_top_productos y reporte_url ventas_top_productos.php.' },
+            { label: 'Serie mensual', text: 'Del ' + desde + ' al ' + hasta + ': serie mensual de suma Valor. Usá ventasgeneral_serie_mensual_valor y reporte_url ventas_serie_mensual.php.' },
+            { label: 'Mix por TDoc', text: 'Del ' + desde + ' al ' + hasta + ': mix de suma Valor por TDoc. Usá ventasgeneral_mix_tdoc y reporte_url ventas_mix_tdoc.php.' },
+            { label: 'NC por zona precio', text: 'Del ' + desde + ' al ' + hasta + ': pareto NC (TDoc 07) por DescriZonaPrecio. Usá ventasgeneral_pareto_nc_zonaprecio y reporte_url pareto_nc_zona.php.' },
+            { label: 'Top en zona TACNA', text: 'Del ' + desde + ' al ' + hasta + ': top 10 clientes por Valor con prefijo_descri_zona_precio TACNA. Usá ventasgeneral_top_clientes_zona_precio y reporte_url pareto_clientes_zona.php.' },
+            { label: 'Barras (precio)', text: 'Del ' + desde + ' al ' + hasta + ': barras suma Valor con dimension precio. Usá ventasgeneral_barras_ventas_dimension y reporte_url ventas_barras_dimension.php.' },
+            { label: 'Comparar 2 meses', text: 'Comparativo: período A del ' + b1 + ' al ' + b2 + ' vs período B del ' + c1 + ' al ' + c2 + ', dimensión precio, top 10. Usá ventasgeneral_comparativo_periodos y reporte_url ventas_comparativo.php.' },
+        ];
+    }
+    function renderVentasChips() {
+        if (!chipsMount) return;
+        chipsMount.innerHTML = '';
+        const r = defaultReportRange();
+        faqChipTemplates(r.desde, r.hasta).forEach(function (item) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'ventas-chat-chip';
+            b.textContent = item.label;
+            b.addEventListener('click', function () {
+                input.value = item.text;
+                input.focus();
+            });
+            chipsMount.appendChild(b);
+        });
+    }
 
     function escapeHtml(s) {
         return String(s)
@@ -411,6 +511,7 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
         fab.hidden = true;
         fab.setAttribute('aria-expanded', 'true');
         errEl.hidden = true;
+        renderVentasChips();
         loadDraft();
         input.focus();
     }
@@ -444,6 +545,7 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
     });
 
     loadHistory();
+    renderVentasChips();
 
     let sendInFlight = false;
     async function sendMessage() {
@@ -466,7 +568,7 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
                 body: JSON.stringify({ messages: history }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
+            if (!res.ok || data.ok === false) {
                 throw new Error(data.error || ('HTTP ' + res.status));
             }
             const reply = data.reply || '';

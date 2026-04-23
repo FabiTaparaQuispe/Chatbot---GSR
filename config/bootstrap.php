@@ -22,7 +22,9 @@ if (!function_exists('ventas_load_env')) {
             [$k, $v] = explode('=', $line, 2);
             $k = trim($k);
             $v = trim($v, " \t\"'");
-            if ($k !== '' && getenv($k) === false) {
+            // El archivo .env del proyecto debe prevalecer sobre variables heredadas
+            // del sistema (p. ej. DB_PASS en Windows), para que XAMPP/local coincida.
+            if ($k !== '') {
                 putenv("$k=$v");
                 $_ENV[$k] = $v;
             }
