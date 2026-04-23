@@ -98,6 +98,8 @@ final class ChatReplyEnricher
             $filas = $payload['filas_ranking'];
         } elseif (isset($payload['filas']) && is_array($payload['filas'])) {
             $filas = $payload['filas'];
+        } elseif (isset($payload['proyecciones']) && is_array($payload['proyecciones'])) {
+            return self::linesProyecciones($payload['proyecciones'], $payload);
         }
 
         if ($filas === null || $filas === []) {
@@ -400,6 +402,31 @@ final class ChatReplyEnricher
                 }
                 break;
             }
+        }
+
+        return implode("\n", $out);
+    }
+
+    /** @param list<array<string, mixed>> $proyecciones @param array<string, mixed> $payload */
+    private static function linesProyecciones(array $proyecciones, array $payload): string
+    {
+        $out = [];
+        $mesesHist = (int) ($payload['meses_historicos'] ?? 0);
+        $pendiente = self::fmtNum($payload['pendiente_tendencia'] ?? 0);
+        $out[] = "Proyección basada en {$mesesHist} meses históricos (pendiente: {$pendiente}).";
+
+        foreach ($proyecciones as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $mes = (string) ($row['mes'] ?? '');
+            $valor = self::fmtNum($row['valor_proyectado'] ?? 0);
+            $out[] = "{$mes}: {$valor}";
+        }
+
+        $nota = (string) ($payload['nota'] ?? '');
+        if ($nota !== '') {
+            $out[] = "Nota: {$nota}";
         }
 
         return implode("\n", $out);

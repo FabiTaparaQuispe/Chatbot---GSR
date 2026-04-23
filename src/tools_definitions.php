@@ -106,5 +106,12 @@ function ventas_tool_definitions(): array
                 'fecha_desde' => $d, 'fecha_hasta' => $d,
             ], 'required' => ['fecha_desde', 'fecha_hasta']],
         ]],
+        ['type' => 'function', 'function' => [
+            'name' => 'ventasgeneral_proyeccion_ventas',
+            'description' => 'Proyección de ventas futuras basada en serie mensual histórica. Usa regresión lineal simple para estimar tendencia.',
+            'parameters' => ['type' => 'object', 'properties' => [
+                'fecha_desde' => $d, 'fecha_hasta' => $d, 'meses_a_proyectar' => ['type' => 'integer', 'default' => 3],
+            ], 'required' => ['fecha_desde', 'fecha_hasta']],
+        ]],
     ];
 }
