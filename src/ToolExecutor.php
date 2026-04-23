@@ -33,6 +33,7 @@ final class ToolExecutor
                 'ventasgeneral_barras_ruta_comercial' => $this->ventasgeneralBarrasRutaComercial($args),
                 'ventasgeneral_barras_corporativo' => $this->ventasgeneralBarrasCorporativo($args),
                 'ventasgeneral_serie_mensual_valor' => $this->ventasgeneralSerieMensualValor($args),
+                'ventasgeneral_proyeccion_ventas' => $this->ventasgeneralProyeccionVentas($args),
                 default => ['error' => 'Función no reconocida: ' . $name],
             };
         } catch (Throwable $e) {
@@ -410,6 +411,74 @@ final class ToolExecutor
             'total_valor_nc' => $data['total_valor_nc'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_top_clientes_nc.php?' . $q,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function ventasgeneralProyeccionVentas(array $args): array
+    {
+        $d1 = $this->parseDate('fecha_desde', $args);
+        $d2 = $this->parseDate('fecha_hasta', $args);
+        if ($d1 > $d2) {
+            throw new InvalidArgumentException('fecha_desde no puede ser mayor que fecha_hasta');
+        }
+        $meses = $this->intArg($args['meses_a_proyectar'] ?? null, 3, 1, 12);
+
+        // Obtener serie mensual histórica
+        $sql = 'SELECT DATE_FORMAT(FechaCont, \'%Y-%m\') AS mes, SUM(Valor) AS suma_valor
+                FROM ventasgeneral WHERE FechaCont BETWEEN :d1 AND :d2
+                GROUP BY DATE_FORMAT(FechaCont, \'%Y-%m\') ORDER BY mes';
+        $st = $this->pdo->prepare($sql);
+        $st->execute(['d1' => $d1, 'd2' => $d2]);
+        $filas = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        if (count($filas) < 2) {
+            throw new InvalidArgumentException('Se necesitan al menos 2 meses de datos históricos para proyectar');
+        }
+
+        // Calcular regresión lineal simple: y = mx + b
+        $n = count($filas);
+        $sumX = 0;
+        $sumY = 0;
+        $sumXY = 0;
+        $sumXX = 0;
+
+        foreach ($filas as $i => $row) {
+            $x = $i; // índice como tiempo
+            $y = (float) $row['suma_valor'];
+            $sumX += $x;
+            $sumY += $y;
+            $sumXY += $x * $y;
+            $sumXX += $x * $x;
+        }
+
+        $m = ($n * $sumXY - $sumX * $sumY) / ($n * $sumXX - $sumX * $sumX);
+        $b = ($sumY - $m * $sumX) / $n;
+
+        // Proyectar meses futuros
+        $proyecciones = [];
+        $ultimoMes = end($filas)['mes'];
+        $fechaBase = DateTimeImmutable::createFromFormat('Y-m', $ultimoMes);
+
+        for ($i = 1; $i <= $meses; $i++) {
+            $fechaProy = $fechaBase->modify("+$i month");
+            $mesProy = $fechaProy->format('Y-m');
+            $valorProy = $m * ($n + $i - 1) + $b; // x = n + i - 1
+            $proyecciones[] = [
+                'mes' => $mesProy,
+                'valor_proyectado' => max(0, $valorProy), // no negativo
+            ];
+        }
+
+        return [
+            'tabla' => 'ventasgeneral',
+            'tipo' => 'proyeccion_ventas',
+            'periodo_historico' => ['desde' => $d1, 'hasta' => $d2],
+            'meses_historicos' => $n,
+            'pendiente_tendencia' => $m,
+            'intercepto' => $b,
+            'proyecciones' => $proyecciones,
+            'nota' => 'Proyección basada en regresión lineal simple. No considera estacionalidad ni factores externos.',
         ];
     }
 }
