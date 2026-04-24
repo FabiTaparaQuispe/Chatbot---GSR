@@ -21,7 +21,18 @@ final class ChatReplyEnricher
             return $reply;
         }
 
+        // Algunos modelos inventan "Cliente 1/2/3" pese al system prompt; si parece ranking el enricher
+        // no corría antes y el usuario veía cifras correctas pero nombres falsos.
+        if (self::replyUsesGenericClienteLabels($reply)) {
+            return self::summaryWithReporteUrlLine($summary, $reply, $payload);
+        }
+
         if (self::replyLooksLikeRanking($reply)) {
+            $u = trim((string) ($payload['reporte_url'] ?? ''));
+            if ($u !== '' && self::extractReportePhpUrlFromReply($reply) === '') {
+                return trim($reply . "\n\n" . $u);
+            }
+
             return $reply;
         }
 
@@ -64,6 +75,44 @@ final class ChatReplyEnricher
             return false;
         }
         return preg_match_all('/^\d+\.\s+/m', $reply) >= 2;
+    }
+
+    /**
+     * Patrón típico cuando el LLM sustituye nombres reales por etiquetas genéricas.
+     */
+    private static function replyUsesGenericClienteLabels(string $reply): bool
+    {
+        return (bool) preg_match('/^\d+\.\s*Cliente\s+\d+/mi', $reply);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private static function summaryWithReporteUrlLine(string $summary, string $reply, array $payload): string
+    {
+        $url = self::extractReportePhpUrlFromReply($reply);
+        if ($url === '') {
+            $url = trim((string) ($payload['reporte_url'] ?? ''));
+        }
+        if ($url !== '') {
+            return trim($summary . "\n\n" . $url);
+        }
+
+        return trim($summary);
+    }
+
+    private static function extractReportePhpUrlFromReply(string $reply): string
+    {
+        $reply = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}\x{00A0}]/u', '', $reply);
+        if (preg_match(
+            '/(https?:\/\/[^\s<]+|(?:ventas_(?:barras_dimension|comparativo|top_productos|top_clientes_global|top_clientes_nc|mix_tdoc|barras_ruta|barras_corporativo|serie_mensual)|pareto_(?:nc_zona|clientes_zona)(?:_tabla)?|ventasgeneral_(?:buscar|resumen)(?:_tabla)?)\.php\?[^\s<>"\']+)/iu',
+            $reply,
+            $m
+        )) {
+            return rtrim($m[1], "),.;'\"`");
+        }
+
+        return '';
     }
 
     private static function fmtNum(mixed $v, int $decimals = 2): string
@@ -229,7 +278,9 @@ final class ChatReplyEnricher
             $nom = (string) ($row['nombre_cliente'] ?? '');
             $ln = (int) ($row['lineas'] ?? 0);
             $v = self::fmtNum($row['suma_valor'] ?? 0);
-            $out[] = "{$i}. {$nom}: {$ln} líneas, suma Valor " . $v;
+            $pct = $row['pct_del_total'] ?? null;
+            $pctS = is_numeric($pct) ? ', ' . self::fmtNum($pct, 2) . '% del total' : '';
+            $out[] = "{$i}. {$nom}: {$ln} líneas, suma Valor {$v}{$pctS}";
             $i++;
             if ($i > 25) {
                 break;

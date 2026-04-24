@@ -7,7 +7,8 @@ final class GroqClient
     private const URL = 'https://api.groq.com/openai/v1/chat/completions';
     private const MAX_ITERATIONS = 10;
     /** Reduce tokens en vueltas con herramientas (evita 413 TPM en modelos pequeños). */
-    private const MAX_TOOL_JSON_BYTES = 9000;
+    /** Límite del JSON de herramienta hacia Groq; si es bajo, el modelo puede “inventar” nombres al no ver filas completas. */
+    private const MAX_TOOL_JSON_BYTES = 14000;
     private const MAX_429_RETRIES = 5;
 
     public function __construct(

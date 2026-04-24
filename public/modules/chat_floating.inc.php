@@ -6,9 +6,17 @@ $ventasChatApiUrl = '../api/chat.php';
 
 $d = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
 $baseDir = rtrim($d, '/');
-$ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
-    ? ($baseDir . '/')
-    : (($baseDir !== '') ? ($baseDir . '/modules/') : '/modules/');
+// Si la portada se sirve desde /<proyecto>/index.php (sin /public/ en la URL), SCRIPT_NAME apunta al
+// directorio del proyecto: hay que enlazar a public/modules/ o los .php del chat rompen en el servidor.
+if ($baseDir !== '' && str_ends_with($baseDir, '/modules')) {
+    $ventasWebModulesBase = $baseDir . '/';
+} elseif ($baseDir !== '' && str_ends_with($baseDir, '/public')) {
+    $ventasWebModulesBase = $baseDir . '/modules/';
+} elseif ($baseDir !== '') {
+    $ventasWebModulesBase = $baseDir . '/public/modules/';
+} else {
+    $ventasWebModulesBase = '/public/modules/';
+}
 
 ?>
 <style>
