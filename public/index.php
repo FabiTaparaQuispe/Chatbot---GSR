@@ -1,12 +1,24 @@
 <?php
 declare(strict_types=1);
 $pageTitle = 'Ventas · cia2026';
+$script = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? '/index.php'));
+$scriptDir = str_replace('\\', '/', dirname($script));
+$docRoot = @realpath((string) ($_SERVER['DOCUMENT_ROOT'] ?? '')) ?: '';
+$publicFs = @realpath(__DIR__) ?: '';
+if ($docRoot !== '' && $publicFs !== '' && strcasecmp($docRoot, $publicFs) === 0) {
+    $ventasPublicWebBase = ($scriptDir === '/' || $scriptDir === '.') ? '/' : (rtrim($scriptDir, '/') . '/');
+} elseif (str_ends_with($script, '/public/index.php')) {
+    $ventasPublicWebBase = rtrim($scriptDir, '/') . '/';
+} else {
+    $ventasPublicWebBase = rtrim($scriptDir, '/') . '/public/';
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <base href="<?= htmlspecialchars($ventasPublicWebBase, ENT_QUOTES, 'UTF-8') ?>">
     <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
     <style>
         :root {
