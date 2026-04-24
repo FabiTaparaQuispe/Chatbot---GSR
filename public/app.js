@@ -114,18 +114,13 @@ form.addEventListener("submit", async (e) => {
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok || data.ok === false) {
-      const err =
-        data.error ||
-        data.detail?.error?.message ||
-        JSON.stringify(data.detail || data);
-      const normalized = String(err).toLowerCase();
-      const friendly =
-        normalized.includes('token') ||
-        normalized.includes('rate limit') ||
-        normalized.includes('intente luego')
-          ? 'Hubo un problema de servicio o tokens. Intenta nuevamente en unos minutos.'
-          : err;
-      appendBubble("assistant", `Error: ${friendly}`, true);
+      const err = String(
+        data.error || data.detail?.error?.message || JSON.stringify(data.detail || data)
+      ).toLowerCase();
+      const friendly = err.includes('token') || err.includes('rate limit') || err.includes('tpd') || err.includes('diario')
+        ? 'Un momento, estoy pensando... Se alcanzó el límite de consultas. Intentá nuevamente en unos minutos.'
+        : 'Un momento, estoy procesando... Hubo un inconveniente. Por favor intentá de nuevo.';
+      appendBubble("assistant", friendly, true);
       history.pop();
       return;
     }
@@ -134,7 +129,7 @@ form.addEventListener("submit", async (e) => {
     history.push({ role: "assistant", content: answer });
     appendBubble("assistant", answer);
   } catch (err) {
-    appendBubble("assistant", `Error de red: ${err.message}`, true);
+    appendBubble("assistant", "Un momento, estoy procesando... No pude conectarme. Verificá tu conexión e intentá de nuevo.", true);
     history.pop();
   } finally {
     sendBtn.disabled = false;
