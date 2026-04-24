@@ -104,6 +104,9 @@ final class VentasGeneralBuscarQuery
             'filas' => $rows,
             'limit' => $limit,
             'offset' => $offset,
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => $params],
+            ],
         ];
     }
 

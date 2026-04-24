@@ -55,6 +55,9 @@ final class VentasGeneralParetoNc
             'total_impacto_nc' => $total,
             'zonas_contadas_hasta_80pct_aprox' => $hasta80,
             'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+            ],
         ];
     }
 }

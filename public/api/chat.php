@@ -16,6 +16,7 @@ require_once $appRoot . '/src/tools_definitions.php';
 require_once $appRoot . '/src/GroqClient.php';
 require_once $appRoot . '/src/ToolExecutor.php';
 require_once $appRoot . '/src/ChatReplyEnricher.php';
+require_once $appRoot . '/src/SqlTextoHttpLink.php';
 
 $raw = file_get_contents('php://input') ?: '';
 $input = json_decode($raw, true);
@@ -122,6 +123,10 @@ try {
     });
 
     $reply = ChatReplyEnricher::enrichReply((string) ($result['reply'] ?? ''), $result['messages'] ?? []);
+    $sqlLines = SqlTextoHttpLink::formatAppendLines($executor->pullSqlBloquesParaEnlace());
+    if ($sqlLines !== []) {
+        $reply = trim($reply . "\n\n" . implode("\n", $sqlLines));
+    }
 
     echo json_encode([
         'reply' => $unificarEnlacesPareto($reply),

@@ -55,6 +55,13 @@ final class VentasGeneralReportesGraficos
             'total_valor' => $total,
             'periodo' => ['desde' => $d1, 'hasta' => $d2],
             'dimension' => $dimension,
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+                [
+                    'sql' => 'SELECT COALESCE(SUM(Valor),0) FROM ventasgeneral WHERE FechaCont BETWEEN :d1 AND :d2',
+                    'params' => [':d1' => $d1, ':d2' => $d2],
+                ],
+            ],
         ];
     }
 
@@ -108,6 +115,9 @@ final class VentasGeneralReportesGraficos
             'periodo_a' => ['desde' => $a1, 'hasta' => $a2],
             'periodo_b' => ['desde' => $b1, 'hasta' => $b2],
             'dimension' => $dimension,
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':a1' => $a1, ':a2' => $a2, ':b1' => $b1, ':b2' => $b2]],
+            ],
         ];
     }
 
@@ -129,6 +139,9 @@ final class VentasGeneralReportesGraficos
         return [
             'filas' => $st->fetchAll(PDO::FETCH_ASSOC),
             'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+            ],
         ];
     }
 
@@ -167,7 +180,18 @@ final class VentasGeneralReportesGraficos
             ];
         }
 
-        return ['filas' => $filas, 'total_valor' => $total, 'periodo' => ['desde' => $d1, 'hasta' => $d2]];
+        return [
+            'filas' => $filas,
+            'total_valor' => $total,
+            'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+                [
+                    'sql' => 'SELECT COALESCE(SUM(Valor),0) FROM ventasgeneral WHERE FechaCont BETWEEN :d1 AND :d2',
+                    'params' => [':d1' => $d1, ':d2' => $d2],
+                ],
+            ],
+        ];
     }
 
     /**
@@ -191,7 +215,8 @@ final class VentasGeneralReportesGraficos
         $st = $pdo->prepare($sql);
         $st->execute([':d1' => $d1, ':d2' => $d2]);
         $raw = $st->fetchAll(PDO::FETCH_ASSOC);
-        $stT = $pdo->prepare("SELECT COUNT(*) AS n, COALESCE(SUM(Valor),0) AS v FROM ventasgeneral WHERE FechaCont BETWEEN :d1 AND :d2 AND {$tdoc}");
+        $sqlTot = "SELECT COUNT(*) AS n, COALESCE(SUM(Valor),0) AS v FROM ventasgeneral WHERE FechaCont BETWEEN :d1 AND :d2 AND {$tdoc}";
+        $stT = $pdo->prepare($sqlTot);
         $stT->execute([':d1' => $d1, ':d2' => $d2]);
         $totRow = $stT->fetch(PDO::FETCH_ASSOC) ?: [];
         $totalLineas = (int) ($totRow['n'] ?? 0);
@@ -217,6 +242,10 @@ final class VentasGeneralReportesGraficos
             'total_lineas_nc' => $totalLineas,
             'total_valor_nc' => $totalValorNc,
             'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+                ['sql' => $sqlTot, 'params' => [':d1' => $d1, ':d2' => $d2]],
+            ],
         ];
     }
 
@@ -247,7 +276,14 @@ final class VentasGeneralReportesGraficos
             ];
         }
 
-        return ['filas' => $filas, 'total_valor' => $total, 'periodo' => ['desde' => $d1, 'hasta' => $d2]];
+        return [
+            'filas' => $filas,
+            'total_valor' => $total,
+            'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+            ],
+        ];
     }
 
     /**
@@ -265,7 +301,13 @@ final class VentasGeneralReportesGraficos
         $st = $pdo->prepare($sql);
         $st->execute([':d1' => $d1, ':d2' => $d2]);
 
-        return ['filas' => $st->fetchAll(PDO::FETCH_ASSOC), 'periodo' => ['desde' => $d1, 'hasta' => $d2]];
+        return [
+            'filas' => $st->fetchAll(PDO::FETCH_ASSOC),
+            'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+            ],
+        ];
     }
 
     /**
@@ -285,7 +327,13 @@ final class VentasGeneralReportesGraficos
         $st = $pdo->prepare($sql);
         $st->execute([':d1' => $d1, ':d2' => $d2]);
 
-        return ['filas' => $st->fetchAll(PDO::FETCH_ASSOC), 'periodo' => ['desde' => $d1, 'hasta' => $d2]];
+        return [
+            'filas' => $st->fetchAll(PDO::FETCH_ASSOC),
+            'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+            ],
+        ];
     }
 
     /**
@@ -300,6 +348,12 @@ final class VentasGeneralReportesGraficos
         $st = $pdo->prepare($sql);
         $st->execute([':d1' => $d1, ':d2' => $d2]);
 
-        return ['filas' => $st->fetchAll(PDO::FETCH_ASSOC), 'periodo' => ['desde' => $d1, 'hasta' => $d2]];
+        return [
+            'filas' => $st->fetchAll(PDO::FETCH_ASSOC),
+            'periodo' => ['desde' => $d1, 'hasta' => $d2],
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2]],
+            ],
+        ];
     }
 }

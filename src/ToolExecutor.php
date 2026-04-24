@@ -6,14 +6,26 @@ require_once __DIR__ . '/VentasGeneralParetoNc.php';
 require_once __DIR__ . '/VentasGeneralTopClientesZona.php';
 require_once __DIR__ . '/VentasGeneralBuscarQuery.php';
 require_once __DIR__ . '/VentasGeneralReportesGraficos.php';
+require_once __DIR__ . '/SqlSentenciaTexto.php';
 
 final class ToolExecutor
 {
     private const MAX_LIMIT = 100;
     private const DEFAULT_LIMIT = 50;
 
+    /** @var list<string> sentencias interpoladas (una por consulta ejecutada en esta petición) */
+    private array $sqlBloquesEjecutados = [];
+
     public function __construct(private PDO $pdo)
     {
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function pullSqlBloquesParaEnlace(): array
+    {
+        return $this->sqlBloquesEjecutados;
     }
 
     public function execute(string $name, array $args): string
@@ -39,7 +51,27 @@ final class ToolExecutor
         } catch (Throwable $e) {
             $result = ['error' => $e->getMessage()];
         }
+        if (is_array($result)) {
+            $this->absorbSqlTraces($result);
+        }
+
         return json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    }
+
+    /** @param array<string, mixed> $result */
+    private function absorbSqlTraces(array &$result): void
+    {
+        $tr = $result['_sql_traces'] ?? null;
+        unset($result['_sql_traces']);
+        if (!is_array($tr)) {
+            return;
+        }
+        foreach ($tr as $item) {
+            if (!is_array($item) || !isset($item['sql'], $item['params']) || !is_string($item['sql']) || !is_array($item['params'])) {
+                continue;
+            }
+            $this->sqlBloquesEjecutados[] = SqlSentenciaTexto::interpolate($this->pdo, $item['sql'], $item['params']);
+        }
     }
 
     private function parseDate(string $key, array $args, bool $required = true): ?string
@@ -126,6 +158,9 @@ final class ToolExecutor
             'periodo' => ['desde' => $d1, 'hasta' => $d2],
             'agregados' => $row,
             'reporte_url' => 'ventasgeneral_resumen_tabla.php?' . http_build_query($tablaQ, '', '&', PHP_QUERY_RFC3986),
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => $params],
+            ],
         ];
     }
 
@@ -133,6 +168,8 @@ final class ToolExecutor
     private function ventasgeneralBuscar(array $args): array
     {
         $out = VentasGeneralBuscarQuery::search($this->pdo, $args);
+        $tr = $out['_sql_traces'] ?? [];
+        unset($out['_sql_traces']);
         $tablaArgs = $args;
         $tablaArgs['limit'] = $out['limit'];
         $tablaArgs['offset'] = $out['offset'];
@@ -144,6 +181,7 @@ final class ToolExecutor
             'offset' => $out['offset'],
             'filas' => $out['filas'],
             'reporte_url' => VentasGeneralBuscarQuery::buildTablaUrl($tablaArgs),
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -157,6 +195,8 @@ final class ToolExecutor
         }
         $maxZ = $this->intArg($args['max_zonas'] ?? null, 100, 1, 200);
         $data = VentasGeneralParetoNc::datos($this->pdo, $d1, $d2, $maxZ);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2, 'max' => $maxZ], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -168,6 +208,7 @@ final class ToolExecutor
             'filas_pareto' => $data['filas'],
             'zonas_hasta_80pct_aprox' => $data['zonas_contadas_hasta_80pct_aprox'],
             'reporte_url' => 'pareto_nc_zona.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -185,6 +226,8 @@ final class ToolExecutor
         }
         $top = $this->intArg($args['top_n'] ?? null, 10, 1, 100);
         $data = VentasGeneralTopClientesZona::datos($this->pdo, $d1, $d2, $pref, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query([
             'desde' => $d1,
             'hasta' => $d2,
@@ -202,6 +245,7 @@ final class ToolExecutor
             'filas_ranking' => $data['filas'],
             'clientes_hasta_80pct_aprox' => $data['clientes_contados_hasta_80pct_aprox'],
             'reporte_url' => 'pareto_clientes_zona.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -225,6 +269,8 @@ final class ToolExecutor
         $dim = $this->dimensionPrecioComercial($args['dimension'] ?? 'precio');
         $top = $this->intArg($args['top_n'] ?? null, 20, 1, 100);
         $data = VentasGeneralReportesGraficos::barrasPorDimension($this->pdo, $d1, $d2, $dim, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2, 'dim' => $dim, 'top' => $top], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -234,6 +280,7 @@ final class ToolExecutor
             'total_valor_periodo' => $data['total_valor'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_barras_dimension.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -250,6 +297,8 @@ final class ToolExecutor
         $dim = $this->dimensionPrecioComercial($args['dimension'] ?? 'precio');
         $top = $this->intArg($args['top_n'] ?? null, 15, 1, 80);
         $data = VentasGeneralReportesGraficos::comparativoDosPeriodos($this->pdo, $a1, $a2, $b1, $b2, $dim, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query([
             'a_desde' => $a1, 'a_hasta' => $a2, 'b_desde' => $b1, 'b_hasta' => $b2, 'dim' => $dim, 'top' => $top,
         ], '', '&', PHP_QUERY_RFC3986);
@@ -262,6 +311,7 @@ final class ToolExecutor
             'dimension' => $dim,
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_comparativo.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -275,6 +325,8 @@ final class ToolExecutor
         }
         $top = $this->intArg($args['top_n'] ?? null, 15, 1, 100);
         $data = VentasGeneralReportesGraficos::topProductos($this->pdo, $d1, $d2, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2, 'top' => $top], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -283,6 +335,7 @@ final class ToolExecutor
             'periodo' => $data['periodo'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_top_productos.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -296,6 +349,8 @@ final class ToolExecutor
         }
         $top = $this->intArg($args['top_n'] ?? null, 10, 1, 100);
         $data = VentasGeneralReportesGraficos::topClientesGlobal($this->pdo, $d1, $d2, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2, 'top' => $top], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -305,6 +360,7 @@ final class ToolExecutor
             'total_valor' => $data['total_valor'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_top_clientes_global.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -317,6 +373,8 @@ final class ToolExecutor
             throw new InvalidArgumentException('fecha_desde no puede ser mayor que fecha_hasta');
         }
         $data = VentasGeneralReportesGraficos::mixPorTdoc($this->pdo, $d1, $d2);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -326,6 +384,7 @@ final class ToolExecutor
             'total_valor' => $data['total_valor'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_mix_tdoc.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -339,6 +398,8 @@ final class ToolExecutor
         }
         $top = $this->intArg($args['top_n'] ?? null, 15, 1, 100);
         $data = VentasGeneralReportesGraficos::topRutaComercial($this->pdo, $d1, $d2, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2, 'top' => $top], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -347,6 +408,7 @@ final class ToolExecutor
             'periodo' => $data['periodo'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_barras_ruta.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -360,6 +422,8 @@ final class ToolExecutor
         }
         $top = $this->intArg($args['top_n'] ?? null, 15, 1, 100);
         $data = VentasGeneralReportesGraficos::topCorporativo($this->pdo, $d1, $d2, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2, 'top' => $top], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -368,6 +432,7 @@ final class ToolExecutor
             'periodo' => $data['periodo'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_barras_corporativo.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -380,6 +445,8 @@ final class ToolExecutor
             throw new InvalidArgumentException('fecha_desde no puede ser mayor que fecha_hasta');
         }
         $data = VentasGeneralReportesGraficos::serieMensualValor($this->pdo, $d1, $d2);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -388,6 +455,7 @@ final class ToolExecutor
             'periodo' => $data['periodo'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_serie_mensual.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -401,6 +469,8 @@ final class ToolExecutor
         }
         $top = $this->intArg($args['top_n'] ?? null, 10, 1, 100);
         $data = VentasGeneralReportesGraficos::topClientesNotaCredito($this->pdo, $d1, $d2, $top);
+        $tr = $data['_sql_traces'] ?? [];
+        unset($data['_sql_traces']);
         $q = http_build_query(['desde' => $d1, 'hasta' => $d2, 'top' => $top], '', '&', PHP_QUERY_RFC3986);
 
         return [
@@ -411,6 +481,7 @@ final class ToolExecutor
             'total_valor_nc' => $data['total_valor_nc'],
             'filas' => $data['filas'],
             'reporte_url' => 'ventas_top_clientes_nc.php?' . $q,
+            '_sql_traces' => is_array($tr) ? $tr : [],
         ];
     }
 
@@ -428,8 +499,9 @@ final class ToolExecutor
         $sql = 'SELECT DATE_FORMAT(FechaCont, \'%Y-%m\') AS mes, SUM(Valor) AS suma_valor
                 FROM ventasgeneral WHERE FechaCont BETWEEN :d1 AND :d2
                 GROUP BY DATE_FORMAT(FechaCont, \'%Y-%m\') ORDER BY mes';
+        $paramsSerie = [':d1' => $d1, ':d2' => $d2];
         $st = $this->pdo->prepare($sql);
-        $st->execute(['d1' => $d1, 'd2' => $d2]);
+        $st->execute($paramsSerie);
         $filas = $st->fetchAll(PDO::FETCH_ASSOC);
 
         if (count($filas) < 2) {
@@ -479,6 +551,9 @@ final class ToolExecutor
             'intercepto' => $b,
             'proyecciones' => $proyecciones,
             'nota' => 'Proyección basada en regresión lineal simple. No considera estacionalidad ni factores externos.',
+            '_sql_traces' => [
+                ['sql' => $sql, 'params' => $paramsSerie],
+            ],
         ];
     }
 }

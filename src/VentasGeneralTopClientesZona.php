@@ -79,6 +79,10 @@ final class VentasGeneralTopClientesZona
             'clientes_contados_hasta_80pct_aprox' => $hasta80,
             'periodo' => ['desde' => $d1, 'hasta' => $d2],
             'prefijo_descri_zona_precio' => $pref,
+            '_sql_traces' => [
+                ['sql' => $sqlTotal, 'params' => [':d1' => $d1, ':d2' => $d2, ':pref' => $like]],
+                ['sql' => $sql, 'params' => [':d1' => $d1, ':d2' => $d2, ':pref' => $like]],
+            ],
         ];
     }
 }
