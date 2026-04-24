@@ -360,6 +360,7 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
             /(ventasgeneral_top_clientes_nc\.php\?[^\n\r]*)\r?\n\s*&/gi,
             /((?:pareto_nc_zona|pareto_clientes_zona)(?:_tabla)?\.php\?[^\n\r]*)\r?\n\s*&/gi,
             /(ventasgeneral_(?:buscar|resumen)(?:_tabla)?\.php\?[^\n\r]*)\r?\n\s*&/gi,
+            /(ventasgeneral_top_clientes_zona_precio\.php\?[^\n\r]*)\r?\n\s*&/gi,
             /((?:https?:)\/\/[^\s\n<]+\?[^\n\r]*)\r?\n\s*&/gi,
         ];
         do {
@@ -379,7 +380,8 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
             .replace(/ventasgeneral_buscar\.php\?/gi, 'ventasgeneral_buscar_tabla.php?')
             .replace(/ventasgeneral_top_clientes_nc\.php\?/gi, 'ventas_top_clientes_nc.php?')
             .replace(/ventasgeneral_pareto_nc[^?]*\.php\?/gi, 'pareto_nc_zona.php?')
-            .replace(/pareto_nc_zonaprecio\.php\?/gi, 'pareto_nc_zona.php?');
+            .replace(/pareto_nc_zonaprecio\.php\?/gi, 'pareto_nc_zona.php?')
+            .replace(/ventasgeneral_top_clientes_zona_precio\.php\?/gi, 'pareto_clientes_zona.php?');
     }
 
     function resolveAssistantHref(raw) {
@@ -409,8 +411,8 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
         t = unwrapBackticksAroundPhpUrls(t);
         t = collapseDateLineBreaks(t);
         t = collapseMultilineQueryUrls(t);
-        // Incluye nombre erróneo ventasgeneral_top_clientes_nc.php que usa el LLM
-        const re = /(https?:\/\/[^\s<]+|(?:pareto_nc_zona|pareto_clientes_zona)(?:_tabla)?\.php\?[^\s<]+|ventasgeneral_top_clientes_nc\.php\?[^\s<]+|ventas_(?:barras_dimension|comparativo|top_productos|top_clientes_global|top_clientes_nc|mix_tdoc|barras_ruta|barras_corporativo|serie_mensual)\.php\?[^\s<]+|ventasgeneral_(?:buscar|resumen)(?:_tabla)?\.php\?[^\s<]+)/gi;
+        // Incluye nombre erróneo ventasgeneral_top_clientes_nc.php / ventasgeneral_top_clientes_zona_precio.php que usa el LLM
+        const re = /(https?:\/\/[^\s<]+|(?:pareto_nc_zona|pareto_clientes_zona)(?:_tabla)?\.php\?[^\s<]+|ventasgeneral_top_clientes_nc\.php\?[^\s<]+|ventasgeneral_top_clientes_zona_precio\.php\?[^\s<]+|ventas_(?:barras_dimension|comparativo|top_productos|top_clientes_global|top_clientes_nc|mix_tdoc|barras_ruta|barras_corporativo|serie_mensual)\.php\?[^\s<]+|ventasgeneral_(?:buscar|resumen)(?:_tabla)?\.php\?[^\s<]+)/gi;
         const out = [];
         let last = 0;
         let m;
@@ -578,15 +580,16 @@ $ventasWebModulesBase = ($baseDir !== '' && str_ends_with($baseDir, '/modules'))
                 append('assistant', reply);
             }
         } catch (e) {
-            errEl.textContent = String(e.message || e);
-            errEl.hidden = false;
+            const errMsg = String(e.message || e).toLowerCase();
+            const friendly = (errMsg.includes('token') || errMsg.includes('rate limit') || errMsg.includes('tpd') || errMsg.includes('diario'))
+                ? 'Un momento, estoy pensando… Se alcanzó el límite de consultas. Intentá de nuevo en unos minutos.'
+                : 'Un momento, estoy procesando… Hubo un inconveniente. Por favor intentá de nuevo.';
+            append('assistant', friendly);
             history.pop();
-            if (log.lastElementChild) {
-                log.lastElementChild.remove();
-            }
             input.value = text;
             saveDraft();
             saveHistory();
+            errEl.hidden = true;
         } finally {
             send.disabled = false;
             sendInFlight = false;
